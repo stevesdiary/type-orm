@@ -3,6 +3,7 @@ import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../../lib
 import { errors } from '../../lib/errors.js'
 import { sms } from '../../providers/sms.js'
 import { v4 as uuid } from 'uuid'
+import { identityRepository } from './identity.repository.js'
 
 const OTP_TTL = 300 // 5 minutes
 const OTP_RATE_LIMIT = 3 // max requests per window
@@ -26,25 +27,22 @@ export async function requestOtp(phone: string): Promise<void> {
 export async function verifyOtp(
   phone: string,
   code: string,
-): Promise<{ accessToken: string; refreshToken: string; userId: string }> {
+): Promise<{ accessToken: string; refreshToken: string; userId: string; isNewUser: boolean; name: string | null }> {
   const stored = await redis.get<string>(`otp:${phone}`)
-  if (!stored || stored !== code) throw errors.unauthorized('Invalid or expired OTP')
+  if (!stored || String(stored) !== code) throw errors.unauthorized('Invalid or expired OTP')
 
   await redis.del(`otp:${phone}`)
 
-  // In Phase 3 full implementation this will upsert the user in DB
-  // For now we issue tokens with a deterministic userId derived from phone
-  const userId = uuid()
+  const user = await identityRepository.upsertRiderByPhone(phone)
   const sessionId = uuid()
 
-  const payload = { sub: userId, role: 'rider' as const, sessionId }
+  const payload = { sub: user.id, role: 'rider' as const, sessionId }
   const accessToken = signAccessToken(payload)
   const refreshToken = signRefreshToken(payload)
 
-  // Store refresh token in Redis (Phase 3 will persist to DB)
   await redis.set(`refresh:${sessionId}`, refreshToken, { ex: 60 * 60 * 24 * 30 })
 
-  return { accessToken, refreshToken, userId }
+  return { accessToken, refreshToken, userId: user.id, isNewUser: user.isNew, name: user.name }
 }
 
 export async function refreshTokens(
