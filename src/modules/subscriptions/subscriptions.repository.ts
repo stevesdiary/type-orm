@@ -1,32 +1,43 @@
 import { db } from '../../db/index.js'
 import { driverPlans, driverSubscriptions } from '../../db/schema/subscriptions.js'
 import { eq, and, desc, sql } from 'drizzle-orm'
-
-type DriverPlan = typeof driverPlans.$inferSelect
-type DriverSubscription = typeof driverSubscriptions.$inferSelect
-type NewDriverPlan = typeof driverPlans.$inferInsert
-type NewDriverSubscription = typeof driverSubscriptions.$inferInsert
+import { v4 as uuid } from 'uuid'
 
 export const subscriptionsRepository = {
   // Plans
-  async createPlan(data: Omit<NewDriverPlan, 'id' | 'createdAt'>) {
-    const [plan] = await db.insert(driverPlans).values(data).returning()
-    return plan
+  async createPlan(data: {
+    name: string
+    description?: string | null
+    platformFeePercent: number
+    weeklyFeeKobo?: number
+    isActive?: boolean
+  }) {
+    const id = uuid()
+    await db.insert(driverPlans).values({ id, ...data } as any)
+    return this.findPlanById(id)
   },
 
   async findPlanById(id: string) {
-    const [plan] = await db.select().from(driverPlans).where(eq(driverPlans.id, id)).limit(1)
-    return plan
+    return db.query.driverPlans.findFirst({ where: eq(driverPlans.id, id) })
   },
 
   async listPlans(activeOnly = true) {
     const conditions = activeOnly ? [eq(driverPlans.isActive, true)] : []
-    return db.select().from(driverPlans).where(conditions.length ? and(...conditions) : undefined).orderBy(desc(driverPlans.createdAt))
+    return db.query.driverPlans.findMany({
+      where: conditions.length ? and(...conditions) : undefined,
+      orderBy: [desc(driverPlans.createdAt)],
+    })
   },
 
-  async updatePlan(id: string, data: Partial<Omit<NewDriverPlan, 'id' | 'createdAt'>>) {
-    const [plan] = await db.update(driverPlans).set({ ...data, updatedAt: new Date() }).where(eq(driverPlans.id, id)).returning()
-    return plan
+  async updatePlan(id: string, data: {
+    name?: string
+    description?: string | null
+    platformFeePercent?: number
+    weeklyFeeKobo?: number
+    isActive?: boolean
+  }) {
+    await db.update(driverPlans).set({ ...data, updatedAt: new Date() } as any).where(eq(driverPlans.id, id))
+    return this.findPlanById(id)
   },
 
   async deletePlan(id: string) {
@@ -34,61 +45,64 @@ export const subscriptionsRepository = {
   },
 
   // Subscriptions
-  async createSubscription(data: Omit<NewDriverSubscription, 'id' | 'createdAt' | 'updatedAt'>) {
-    const [sub] = await db.insert(driverSubscriptions).values(data).returning()
-    return sub
+  async createSubscription(data: {
+    driverId: string
+    planId: string
+    status: string
+    currentPeriodStart: Date
+    currentPeriodEnd: Date
+    cancelledAt?: Date | null
+  }) {
+    const id = uuid()
+    await db.insert(driverSubscriptions).values({ id, ...data } as any)
+    return this.findSubscriptionById(id)
   },
 
   async findSubscriptionById(id: string) {
-    const [sub] = await db.select().from(driverSubscriptions).where(eq(driverSubscriptions.id, id)).limit(1)
-    return sub
+    return db.query.driverSubscriptions.findFirst({ where: eq(driverSubscriptions.id, id) })
   },
 
   async findActiveSubscriptionByDriver(driverId: string) {
-    const [sub] = await db
-      .select()
-      .from(driverSubscriptions)
-      .where(
-        and(
-          eq(driverSubscriptions.driverId, driverId),
-          eq(driverSubscriptions.status, 'active'),
-        )
-      )
-      .limit(1)
-    return sub
+    return db.query.driverSubscriptions.findFirst({
+      where: and(
+        eq(driverSubscriptions.driverId, driverId),
+        eq(driverSubscriptions.status, 'active' as any),
+      ),
+    })
   },
 
   async listDriverSubscriptions(driverId: string) {
-    return db
-      .select()
-      .from(driverSubscriptions)
-      .where(eq(driverSubscriptions.driverId, driverId))
-      .orderBy(desc(driverSubscriptions.createdAt))
+    return db.query.driverSubscriptions.findMany({
+      where: eq(driverSubscriptions.driverId, driverId),
+      orderBy: [desc(driverSubscriptions.createdAt)],
+    })
   },
 
-  async updateSubscription(id: string, data: Partial<Omit<NewDriverSubscription, 'id' | 'createdAt' | 'updatedAt'>>) {
-    const [sub] = await db
-      .update(driverSubscriptions)
-      .set({ ...data, updatedAt: new Date() })
-      .where(eq(driverSubscriptions.id, id))
-      .returning()
-    return sub
+  async updateSubscription(id: string, data: {
+    driverId?: string
+    planId?: string
+    status?: string
+    currentPeriodStart?: Date
+    currentPeriodEnd?: Date
+    cancelledAt?: Date | null
+  }) {
+    await db.update(driverSubscriptions).set({ ...data, updatedAt: new Date() } as any).where(eq(driverSubscriptions.id, id))
+    return this.findSubscriptionById(id)
   },
 
   async cancelSubscription(id: string) {
-    const [sub] = await db
+    await db
       .update(driverSubscriptions)
-      .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
+      .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() } as any)
       .where(eq(driverSubscriptions.id, id))
-      .returning()
-    return sub
+    return this.findSubscriptionById(id)
   },
 
   async expireSubscriptions() {
     const now = new Date()
     await db
       .update(driverSubscriptions)
-      .set({ status: 'expired', updatedAt: now })
-      .where(and(eq(driverSubscriptions.status, 'active'), sql`${driverSubscriptions.currentPeriodEnd} < ${now}`))
+      .set({ status: 'expired', updatedAt: now } as any)
+      .where(and(eq(driverSubscriptions.status, 'active' as any), sql`${driverSubscriptions.currentPeriodEnd} < ${now}`))
   },
 }
