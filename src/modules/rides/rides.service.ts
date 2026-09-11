@@ -257,7 +257,14 @@ export const ridesService = {
     return { tripId, newFareKobo: trip.estimatedFareKobo ?? 0 } // TODO: actual recalculation
   },
 
-  async rateTrip(tripId: string, actorId: string, actorType: 'rider' | 'driver', rating: number, comment?: string) {
+  async rateTrip(
+    tripId: string,
+    actorId: string,
+    actorType: 'rider' | 'driver',
+    rating: number,
+    comment?: string,
+    tipKobo?: number,
+  ) {
     const trip = await ridesRepository.findById(tripId)
     if (!trip) throw errors.notFound('Trip not found')
     if (trip.status !== 'completed') throw errors.unprocessable('Can only rate completed trips')
@@ -273,7 +280,11 @@ export const ridesService = {
       : { riderRating: rating, riderComment: comment }
 
     const ratingRecord = await ridesRepository.createRating(tripId, data)
-    await ridesRepository.logEvent(tripId, 'rated', actorId, actorType, { rating, comment })
+    if (actorType === 'rider' && tipKobo && tipKobo > 0) {
+      await ridesRepository.updateTrip(tripId, { tipKobo })
+      await ridesRepository.logEvent(tripId, 'tipped', actorId, actorType, { tipKobo })
+    }
+    await ridesRepository.logEvent(tripId, 'rated', actorId, actorType, { rating, comment, tipKobo })
 
     return ratingRecord
   },
@@ -281,6 +292,13 @@ export const ridesService = {
   async getTrip(tripId: string) {
     const trip = await ridesRepository.findById(tripId)
     if (!trip) throw errors.notFound('Trip not found')
+    return trip
+  },
+
+  async getTripForRider(tripId: string, riderId: string) {
+    const trip = await ridesRepository.findByIdForRider(tripId)
+    if (!trip) throw errors.notFound('Trip not found')
+    if (trip.riderId !== riderId) throw errors.forbidden('Not your trip')
     return trip
   },
 

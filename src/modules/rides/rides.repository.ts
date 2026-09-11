@@ -1,5 +1,5 @@
 import { db } from '../../db/index.js'
-import { trips, tripStops, tripEvents, tripRatings, driverOffers, dispatchAttempts, drivers, riders } from '../../db/schema/index.js'
+import { trips, tripStops, tripEvents, tripRatings, driverOffers, dispatchAttempts, drivers, riders, users, vehicles } from '../../db/schema/index.js'
 import { eq, and, isNull, desc, inArray, sql, gte } from 'drizzle-orm'
 import { v4 as uuid } from 'uuid'
 
@@ -16,6 +16,73 @@ export const ridesRepository = {
     return db.query.trips.findFirst({
       where: and(eq(trips.id, id), isNull(trips.deletedAt)),
     })
+  },
+
+  /**
+   * Trip plus the driver/vehicle summary the rider app renders (name, rating,
+   * plate…). Null driver until dispatch matches someone.
+   */
+  async findByIdForRider(id: string) {
+    const trip = await this.findById(id)
+    if (!trip) return null
+    const stops = await db.query.tripStops.findMany({
+      where: eq(tripStops.tripId, id),
+      orderBy: [tripStops.sequence],
+    })
+    const rating = await this.getRating(id)
+    if (!trip.driverId) return { ...trip, stops, driver: null, vehicle: null, rated: !!rating?.driverRating }
+
+    const [row] = await db
+      .select({
+        driverId: drivers.id,
+        name: users.name,
+        phone: users.phone,
+        avatarUrl: users.avatarUrl,
+        rating: drivers.rating,
+        totalTrips: drivers.totalTrips,
+        currentLat: drivers.currentLat,
+        currentLng: drivers.currentLng,
+      })
+      .from(drivers)
+      .innerJoin(users, eq(users.id, drivers.userId))
+      .where(eq(drivers.id, trip.driverId))
+      .limit(1)
+
+    const vehicle = trip.vehicleId
+      ? await db.query.vehicles.findFirst({ where: eq(vehicles.id, trip.vehicleId) })
+      : await db.query.vehicles.findFirst({
+          where: and(eq(vehicles.driverId, trip.driverId), eq(vehicles.isActive, true)),
+        })
+
+    return {
+      ...trip,
+      stops,
+      rated: !!rating?.driverRating,
+      driver: row
+        ? {
+            id: row.driverId,
+            name: row.name ?? 'NaijaMove driver',
+            phone: row.phone,
+            avatarUrl: row.avatarUrl,
+            rating: row.rating,
+            totalTrips: parseInt(row.totalTrips, 10) || 0,
+            currentLat: row.currentLat,
+            currentLng: row.currentLng,
+          }
+        : null,
+      vehicle: vehicle
+        ? {
+            id: vehicle.id,
+            make: vehicle.make,
+            model: vehicle.model,
+            year: vehicle.year,
+            color: vehicle.color,
+            plate: vehicle.plate,
+            category: vehicle.category,
+            seats: vehicle.seats,
+          }
+        : null,
+    }
   },
 
   async findByRiderId(riderId: string, limit = 20, offset = 0) {

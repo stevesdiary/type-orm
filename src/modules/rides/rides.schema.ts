@@ -36,6 +36,7 @@ export const verifyPinSchema = z.object({
 export const rateTripSchema = z.object({
   rating: z.number().int().min(1).max(5),
   comment: z.string().max(500).optional(),
+  tipKobo: z.number().int().min(0).max(5_000_000).optional(),
 })
 
 export type CreateTripBody = z.infer<typeof createTripSchema>
