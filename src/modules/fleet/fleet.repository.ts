@@ -50,7 +50,7 @@ export const fleetRepository = {
   },
 
   async updateVehicleAvailability(id: string, isAvailableForAssignment: boolean) {
-    await db.update(fleetVehicles).set({ isAvailableForAssignment, updatedAt: new Date() }).where(eq(fleetVehicles.id, id))
+    await db.update(fleetVehicles).set({ isAvailableForAssignment } as any).where(eq(fleetVehicles.id, id))
     return this.findVehicleById(id)
   },
 
@@ -85,12 +85,12 @@ export const fleetRepository = {
   },
 
   async updateAssignment(id: string, data: { endDate?: Date; isActive?: boolean }) {
-    await db.update(fleetAssignments).set({ ...data, updatedAt: new Date() }).where(eq(fleetAssignments.id, id))
+    await db.update(fleetAssignments).set(data as any).where(eq(fleetAssignments.id, id))
     return this.findAssignmentById(id)
   },
 
   async endAssignment(id: string) {
-    await db.update(fleetAssignments).set({ endDate: new Date(), isActive: false, updatedAt: new Date() }).where(eq(fleetAssignments.id, id))
+    await db.update(fleetAssignments).set({ endDate: new Date(), isActive: false } as any).where(eq(fleetAssignments.id, id))
     return this.findAssignmentById(id)
   },
 }

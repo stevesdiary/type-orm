@@ -50,7 +50,7 @@ export const corporateRepository = {
   },
 
   async updateMember(id: string, data: Partial<{ role: string; monthlyBudgetKobo: number; isActive: boolean }>) {
-    await db.update(corporateMembers).set({ ...data, updatedAt: new Date() }).where(eq(corporateMembers.id, id))
+    await db.update(corporateMembers).set(data as any).where(eq(corporateMembers.id, id))
     return this.findMemberById(id)
   },
 
