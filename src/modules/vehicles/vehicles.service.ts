@@ -49,7 +49,7 @@ export const vehiclesService = {
   async deleteVehicle(userId: string, vehicleId: string) {
     const driver = await driversRepository.findByUserId(userId)
     if (!driver) throw errors.notFound('Driver profile not found')
-    await vehiclesRepository.softDelete(vehicleId, driver.id)
+    await vehiclesRepository.delete(vehicleId, driver.id)
   },
 
   // Inspections

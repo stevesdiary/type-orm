@@ -6,14 +6,14 @@ import { v4 as uuid } from 'uuid'
 export const vehiclesRepository = {
   async findByDriverId(driverId: string) {
     return db.query.vehicles.findMany({
-      where: and(eq(vehicles.driverId, driverId), isNull(vehicles.deletedAt)),
+      where: eq(vehicles.driverId, driverId),
       orderBy: [desc(vehicles.createdAt)],
     })
   },
 
   async findById(id: string) {
     return db.query.vehicles.findFirst({
-      where: and(eq(vehicles.id, id), isNull(vehicles.deletedAt)),
+      where: eq(vehicles.id, id),
     })
   },
 
@@ -54,14 +54,13 @@ export const vehiclesRepository = {
     await db
       .update(vehicles)
       .set({ ...data, updatedAt: new Date() })
-      .where(and(eq(vehicles.id, id), eq(vehicles.driverId, driverId), isNull(vehicles.deletedAt)))
+      .where(and(eq(vehicles.id, id), eq(vehicles.driverId, driverId)))
     return this.findById(id)
   },
 
-  async softDelete(id: string, driverId: string) {
+  async delete(id: string, driverId: string) {
     await db
-      .update(vehicles)
-      .set({ deletedAt: new Date() })
+      .delete(vehicles)
       .where(and(eq(vehicles.id, id), eq(vehicles.driverId, driverId)))
   },
 
