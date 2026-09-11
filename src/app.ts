@@ -29,6 +29,9 @@ import { fraudRoutes } from './modules/fraud/fraud.routes.js'
 import { complianceRoutes } from './modules/compliance/compliance.routes.js'
 import { analyticsRoutes } from './modules/analytics/analytics.routes.js'
 import { mapsRoutes } from './modules/maps/maps.routes.js'
+import { dispatchRoutes } from './modules/dispatch/dispatch.routes.js'
+import { ledgerRoutes } from './modules/ledger/ledger.routes.js'
+import { walletRoutes } from './modules/wallets/wallets.routes.js'
 
 export async function buildApp() {
   const app = Fastify({
@@ -82,6 +85,9 @@ export async function buildApp() {
   await app.register(complianceRoutes, { prefix: '/compliance' })
   await app.register(analyticsRoutes, { prefix: '/analytics' })
   await app.register(mapsRoutes, { prefix: '/maps' })
+  await app.register(dispatchRoutes, { prefix: '/dispatch' })
+  await app.register(ledgerRoutes, { prefix: '/ledger' })
+  await app.register(walletRoutes, { prefix: '/wallet' })
 
   return app
 }
