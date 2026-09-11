@@ -12,7 +12,7 @@ import { ridersService } from './riders.service.js'
 
 export async function riderRoutes(app: FastifyInstance) {
   app.get('/me', { preHandler: [authenticate, authorize('rider')] }, async (req) => {
-    return ridersService.getProfile(req.user.sub)
+    return ridersService.getFullProfile(req.user.sub)
   })
 
   app.put<{ Body: UpdateProfileBody }>('/me', { preHandler: [authenticate, authorize('rider')] }, async (req) => {

@@ -10,10 +10,25 @@ export const ridersService = {
     return rider
   },
 
-  async updateProfile(userId: string, data: { preferredPaymentMethod?: string }) {
+  /** Profile as the rider app needs it: rider stats + user name/phone/email. */
+  async getFullProfile(userId: string) {
+    await this.getProfile(userId)
+    const profile = await ridersRepository.findProfileByUserId(userId)
+    if (!profile) throw errors.notFound('Rider profile not found')
+    return profile
+  },
+
+  async updateProfile(userId: string, data: { name?: string; email?: string; preferredPaymentMethod?: string }) {
     const rider = await ridersRepository.findByUserId(userId)
     if (!rider) throw errors.notFound('Rider profile not found')
-    return ridersRepository.update(rider.id, data)
+    const { name, email, ...riderData } = data
+    if (name !== undefined || email !== undefined) {
+      await ridersRepository.updateUser(userId, { name, email })
+    }
+    if (riderData.preferredPaymentMethod !== undefined) {
+      await ridersRepository.update(rider.id, riderData)
+    }
+    return this.getFullProfile(userId)
   },
 
   // Saved Places

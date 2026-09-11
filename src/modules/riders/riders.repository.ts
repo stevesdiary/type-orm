@@ -1,5 +1,5 @@
 import { db } from '../../db/index.js'
-import { riders, savedPlaces, emergencyContacts } from '../../db/schema/index.js'
+import { riders, savedPlaces, emergencyContacts, users } from '../../db/schema/index.js'
 import { eq, and, isNull, desc } from 'drizzle-orm'
 import { v4 as uuid } from 'uuid'
 
@@ -20,6 +20,25 @@ export const ridersRepository = {
     const id = uuid()
     await db.insert(riders).values({ id, userId })
     return this.findById(id)
+  },
+
+  /** Rider row merged with the user's identity fields — what the app shows on Profile. */
+  async findProfileByUserId(userId: string) {
+    const rider = await this.findByUserId(userId)
+    if (!rider) return null
+    const user = await db.query.users.findFirst({ where: eq(users.id, userId) })
+    return {
+      ...rider,
+      name: user?.name ?? null,
+      phone: user?.phone ?? null,
+      email: user?.email ?? null,
+      avatarUrl: user?.avatarUrl ?? null,
+      totalTrips: parseInt(rider.totalTrips, 10) || 0,
+    }
+  },
+
+  async updateUser(userId: string, data: Partial<{ name: string; email: string }>) {
+    await db.update(users).set({ ...data, updatedAt: new Date() }).where(eq(users.id, userId))
   },
 
   async update(id: string, data: Partial<{ preferredPaymentMethod: string }>) {
