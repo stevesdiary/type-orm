@@ -1,0 +1,193 @@
+# NaijaMove Server
+
+Backend API for NaijaMove — a ride-hailing and logistics platform for Nigeria. Serves the rider app, driver app, and admin tooling over REST + WebSockets.
+
+## Stack
+
+| Layer | Choice |
+|---|---|
+| Runtime | Node.js 22 LTS, TypeScript (ESM) |
+| Framework | [Fastify 5](https://fastify.dev) |
+| Database | [Neon Postgres](https://neon.tech) via [Drizzle ORM](https://orm.drizzle.team) |
+| Realtime | `@fastify/websocket` (trip-scoped channels) |
+| Queues | [BullMQ](https://bullmq.io) on Upstash Redis |
+| Scheduled jobs | [QStash](https://upstash.com/docs/qstash) → `POST /internal/jobs/enqueue/:type` |
+| Cache / rate limiting / idempotency | Upstash Redis |
+| Auth | JWT (access + refresh), phone OTP |
+| Maps | Mapbox |
+| Payments | Paystack |
+| SMS | Mock (Termii-shaped interface) |
+| Testing | Vitest |
+| Deploy | Render |
+
+See [PLAN.md](./PLAN.md) for the full architecture and execution plan.
+
+## Getting started
+
+### Prerequisites
+
+- Node.js 22+
+- A Neon Postgres database
+- An Upstash Redis database (REST URL + IORedis-compatible `rediss://` URL)
+- Upstash QStash, Mapbox, and Paystack credentials (test keys are fine locally)
+
+### Install
+
+```bash
+npm install
+cp .env.example .env
+# fill in .env — every variable is validated on boot (see src/config/env.ts)
+```
+
+### Database
+
+```bash
+npm run db:generate   # generate SQL migrations from src/db/schema/*
+npm run db:migrate    # apply migrations to DATABASE_URL
+npm run db:studio     # open Drizzle Studio
+```
+
+### Run
+
+```bash
+npm run dev           # tsx watch — hot reload on http://localhost:3000
+npm run build         # tsc → dist/
+npm start             # node dist/server.js
+```
+
+Health check: `GET /health`
+
+### Test
+
+```bash
+npm test              # vitest run
+npm run test:watch
+npm run test:coverage # v8 coverage → coverage/
+```
+
+Tests live in `test/` and mock Redis, SMS, and env so no external services are required.
+
+## Environment variables
+
+All variables are required unless a default is listed. The server exits on boot if any are missing or invalid.
+
+| Variable | Notes |
+|---|---|
+| `NODE_ENV` | `development` \| `test` \| `production` (default `development`) |
+| `PORT` | default `3000` |
+| `DATABASE_URL` | Neon Postgres connection string |
+| `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | min 32 chars each |
+| `REDIS_URL` | IORedis-compatible `rediss://` URL (BullMQ) |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash REST client (cache, rate limit, idempotency) |
+| `QSTASH_TOKEN` / `QSTASH_CURRENT_SIGNING_KEY` / `QSTASH_NEXT_SIGNING_KEY` | QStash publish + signature verification |
+| `MAPBOX_ACCESS_TOKEN` | Routing, ETA, geocoding |
+| `PAYSTACK_SECRET_KEY` / `PAYSTACK_WEBHOOK_SECRET` | Payments + webhook verification |
+| `INTERNAL_JOB_SECRET` | min 32 chars; guards `/internal` routes |
+| `APP_URL` | Public URL QStash calls back to |
+
+## Project structure
+
+```
+src/
+├── app.ts                  # buildApp(): plugins, error handler, route registration
+├── server.ts               # entrypoint: listen + start BullMQ workers
+├── config/env.ts           # zod-validated environment
+├── db/
+│   ├── index.ts            # Drizzle + Neon client
+│   └── schema/             # one file per domain (identity, rides, wallets, ledger, …)
+├── lib/
+│   ├── errors.ts           # AppError + global error handler
+│   ├── jwt.ts              # sign/verify access & refresh tokens
+│   ├── rbac.ts             # authenticate / authorize(...roles) preHandlers
+│   └── idempotency.ts      # Redis client + idempotency-key helpers
+├── modules/<domain>/       # routes → service → repository, with zod schemas
+├── providers/              # maps (Mapbox), payments (Paystack), sms (mock)
+├── queues/
+│   ├── queues.ts           # settlement, payout, notification, compliance, fraud
+│   ├── enqueue.ts
+│   └── workers/            # one worker per queue, started from server.ts
+└── websocket/trip.ws.ts    # live trip channels
+```
+
+Each module follows the same layout:
+
+```
+modules/rides/
+├── rides.routes.ts      # Fastify plugin, registered with a prefix in app.ts
+├── rides.schema.ts      # zod request/response schemas
+├── rides.service.ts     # business logic
+└── rides.repository.ts  # Drizzle queries
+```
+
+## API surface
+
+All routes are registered in `src/app.ts`. Prefixes:
+
+| Prefix | Module |
+|---|---|
+| `/auth` | Phone OTP login, token refresh, logout |
+| `/riders` | Rider profiles |
+| `/drivers` | Driver onboarding, status, earnings |
+| `/vehicles` | Vehicle registration and documents |
+| `/rides` | Ride request, match, lifecycle |
+| `/pricing` | Fare estimates, surge |
+| `/payments` | Wallets, Paystack charges, webhooks, ledger |
+| `/safety` | SOS, trip sharing, incident reports |
+| `/notifications` | Push/SMS preferences and history |
+| `/support` | Tickets |
+| `/logistics` | Package delivery |
+| `/corporate` | Business accounts |
+| `/fleet` | Fleet owners and assigned drivers |
+| `/subscriptions` | Driver/rider plans |
+| `/promotions` | Promo codes and referrals |
+| `/fraud` | Fraud flags and reviews |
+| `/compliance` | Document expiry and regulatory checks |
+| `/analytics` | Reporting |
+| `/admin` | Admin operations (role-gated) |
+| `/internal` | QStash-triggered job enqueue (signature-verified) |
+
+### Auth
+
+Send `Authorization: Bearer <accessToken>` on protected routes. Roles are enforced with `authorize(...roles)` from `src/lib/rbac.ts`.
+
+```
+POST /auth/otp/request    { phone }
+POST /auth/otp/verify     { phone, code }   → { accessToken, refreshToken }
+POST /auth/token/refresh  { refreshToken }
+POST /auth/logout         (authenticated)
+```
+
+### WebSockets
+
+```
+GET /ws/trip/:tripId/driver   # driver streams GPS every ~3s
+GET /ws/trip/:tripId/rider    # rider receives location + trip state events
+```
+
+Driver location is cached in Redis (`loc:{tripId}`, short TTL) and fanned out to the rider channel on each update. Trip state events (`arrived`, `started`, `completed`, `cancelled`) are emitted on the same channels.
+
+### Rate limiting
+
+Global: 100 requests / minute per client, backed by Redis.
+
+## Background jobs
+
+| Queue | Trigger |
+|---|---|
+| `settlement` | QStash nightly → `/internal/jobs/enqueue/settlement` |
+| `compliance` | QStash daily |
+| `fraud` | QStash sweep |
+| `notification` | QStash retry + direct enqueue from app |
+| `payout` | Enqueued directly by the app |
+
+Workers are started in-process from `src/server.ts` after the HTTP server is listening.
+
+## Deployment
+
+Deployed to Render as a single always-on web service:
+
+- Build: `npm install && npm run build`
+- Start: `npm start`
+- Set every variable from `.env.example` in the Render dashboard
+- Point QStash schedules at `${APP_URL}/internal/jobs/enqueue/<type>`
+- Point the Paystack webhook at `${APP_URL}/payments/webhooks/paystack`
