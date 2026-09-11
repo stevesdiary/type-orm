@@ -73,6 +73,13 @@ export async function buildApp() {
   await app.register(notificationRoutes, { prefix: '/notifications' })
   await app.register(supportRoutes, { prefix: '/support' })
   await app.register(logisticsRoutes, { prefix: '/logistics' })
+  await app.register(corporateRoutes, { prefix: '/corporate' })
+  await app.register(fleetRoutes, { prefix: '/fleet' })
+  await app.register(subscriptionsRoutes, { prefix: '/subscriptions' })
+  await app.register(promotionsRoutes, { prefix: '/promotions' })
+  await app.register(fraudRoutes, { prefix: '/fraud' })
+  await app.register(complianceRoutes, { prefix: '/compliance' })
+  await app.register(analyticsRoutes, { prefix: '/analytics' })
 
   return app
 }
