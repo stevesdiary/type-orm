@@ -70,7 +70,7 @@ export const complianceService = {
       await complianceRepository.createEvent({
         complianceItemId: item.id,
         fromStatus: 'compliant',
-        toStatus: 'expiring_soon',
+        toStatus: 'expiring_soon' as any,
         triggeredBy: 'system',
         note: 'Item expiring within 30 days',
       })
