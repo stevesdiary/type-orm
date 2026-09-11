@@ -46,6 +46,13 @@ vi.mock('../../src/config/env.js', () => ({
   },
 }))
 
+vi.mock('../../src/modules/identity/identity.repository.js', () => ({
+  identityRepository: {
+    findUserByPhone: vi.fn(async () => null),
+    upsertRiderByPhone: vi.fn(async () => ({ id: '11111111-1111-4111-8111-111111111111', name: null, isNew: true })),
+  },
+}))
+
 import { requestOtp, verifyOtp, refreshTokens } from '../../src/modules/identity/identity.service.js'
 import { redis } from '../../src/lib/idempotency.js'
 
@@ -74,6 +81,7 @@ describe('identity service', () => {
     expect(result).toHaveProperty('accessToken')
     expect(result).toHaveProperty('refreshToken')
     expect(result).toHaveProperty('userId')
+    expect(result.isNewUser).toBe(true)
   })
 
   it('rotates refresh token on refresh', async () => {
