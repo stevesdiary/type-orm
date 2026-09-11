@@ -2,10 +2,12 @@ import type { FastifyInstance } from 'fastify'
 import { authenticate, authorize } from '../../lib/rbac.js'
 import {
   initializePaymentSchema,
+  walletTopupSchema,
   webhookSchema,
   refundSchema,
   driverPayoutSchema,
   type InitializePaymentBody,
+  type WalletTopupBody,
   type WebhookBody,
   type RefundBody,
   type DriverPayoutBody,
@@ -68,7 +70,24 @@ export async function paymentRoutes(app: FastifyInstance) {
     return walletService.getWalletTransactions(req.user.sub, role, limit ? parseInt(limit) : 50, offset ? parseInt(offset) : 0)
   })
 
-  // Top up wallet
+  // Initialize wallet top-up — returns Paystack checkout URL
+  // Supports card, bank transfer, USSD and mobile money
+  app.post<{ Body: WalletTopupBody }>(
+    '/wallet/topup/initialize',
+    { preHandler: [authenticate] },
+    async (req) => {
+      const { amountKobo, email } = walletTopupSchema.parse(req.body)
+      const ownerType = req.user.role as 'rider' | 'driver' | 'corporate' | 'fleet_owner'
+      return paymentsService.initializeWalletTopup({
+        ownerId: req.user.sub,
+        ownerType,
+        amountKobo,
+        email,
+      })
+    }
+  )
+
+  // Top up wallet directly (internal use — called after webhook confirms payment)
   app.post<{ Body: { amountKobo: number; reference: string; description: string } }>(
     '/wallet/topup',
     { preHandler: [authenticate] },
@@ -90,21 +109,28 @@ export async function paymentRoutes(app: FastifyInstance) {
     }
   )
 
-  // Paystack webhook (no auth, verified by signature)
+  // Paystack webhook (no auth, verified by HMAC-SHA512 signature)
+  // Handles: charge.success (card + bank transfer), transfer.success (payouts + inbound transfers)
   app.post<{ Body: WebhookBody }>('/webhooks/paystack', async (req, reply) => {
     const signature = req.headers['x-paystack-signature'] as string
-    const body = req.body
+    if (!signature) return reply.status(400).send({ error: 'Missing signature' })
 
-    // Verify signature
+    const rawBody = JSON.stringify(req.body)
     const expectedSignature = crypto
       .createHmac('sha512', env.PAYSTACK_WEBHOOK_SECRET)
-      .update(JSON.stringify(body))
+      .update(rawBody)
       .digest('hex')
 
     if (signature !== expectedSignature) {
       return reply.status(400).send({ error: 'Invalid signature' })
     }
 
-    return paymentsService.handlePaystackWebhook(body, signature)
+    // Acknowledge immediately — Paystack expects 200 within 5s
+    reply.status(200).send({ received: true })
+
+    // Process asynchronously after response sent
+    paymentsService.handlePaystackWebhook(req.body, signature).catch((err) => {
+      console.error('Webhook processing error:', err)
+    })
   })
 }

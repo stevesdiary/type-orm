@@ -1,6 +1,7 @@
 import { paystack } from '../../providers/payments.js'
 import { pricingService } from '../pricing/pricing.service.js'
 import { ledgerRepository } from './ledger.repository.js'
+import { walletService } from './wallet.service.js'
 import { ridesService } from '../rides/rides.service.js'
 import { errors } from '../../lib/errors.js'
 import { assertIdempotent } from '../../lib/idempotency.js'
@@ -25,14 +26,42 @@ export const paymentsService = {
       params.email,
       params.amountKobo,
       reference,
-      { ...params.metadata, tripId: params.tripId, riderId: params.riderId }
+      { ...params.metadata, tripId: params.tripId, riderId: params.riderId },
     )
 
-    // Store payment intent (simplified - in production use repository)
     return {
       authorizationUrl: result.authorization_url,
       accessCode: result.access_code,
       reference: result.reference,
+    }
+  },
+
+  async initializeWalletTopup(params: {
+    ownerId: string
+    ownerType: 'rider' | 'driver' | 'corporate' | 'fleet_owner'
+    amountKobo: number
+    email: string
+  }) {
+    const idempotencyKey = `wallet_topup:${params.ownerId}:${params.amountKobo}:${Date.now()}`
+    const reference = `topup_${params.ownerId}_${Date.now()}`
+
+    const result = await paystack.initialize(
+      params.email,
+      params.amountKobo,
+      reference,
+      {
+        context: 'wallet_topup',
+        ownerId: params.ownerId,
+        ownerType: params.ownerType,
+      },
+      // All channels enabled — card, bank_transfer, ussd, mobile_money
+    )
+
+    return {
+      authorizationUrl: result.authorization_url,
+      accessCode: result.access_code,
+      reference: result.reference,
+      channels: ['card', 'bank_transfer', 'ussd', 'mobile_money'],
     }
   },
 
@@ -82,7 +111,18 @@ export const paymentsService = {
     const amountKobo = data.amount
     const metadata = data.metadata || {}
 
-    // Find trip from metadata
+    // --- Wallet top-up via card or bank transfer ---
+    if (metadata.context === 'wallet_topup') {
+      const { ownerId, ownerType } = metadata as { ownerId: string; ownerType: 'rider' | 'driver' | 'corporate' | 'fleet_owner' }
+      if (!ownerId || !ownerType) {
+        console.error('wallet_topup webhook missing ownerId/ownerType', { reference })
+        return
+      }
+      await walletService.topUp(ownerId, ownerType, amountKobo, reference, `Wallet top-up via ${data.channel ?? 'card'}`)
+      return
+    }
+
+    // --- Trip payment ---
     const tripId = metadata.tripId
     const riderId = metadata.riderId
 
@@ -94,15 +134,10 @@ export const paymentsService = {
     const trip = await ridesService.getTrip(tripId)
     if (!trip) throw errors.notFound('Trip not found')
 
-    // Calculate platform fee and driver amount
     const platformFeeKobo = Math.round(amountKobo * PLATFORM_FEE_PERCENT)
     const driverAmountKobo = amountKobo - platformFeeKobo
-
-    // Create double-entry ledger for trip payment
     const correlationId = uuid()
-    
-    // Debit: rider_wallet (rider pays)
-    // Credit: platform_revenue (platform fee)
+
     await ledgerRepository.createDoubleEntry({
       correlationId,
       debitAccount: 'rider_wallet',
@@ -116,8 +151,6 @@ export const paymentsService = {
       metadata: { paymentReference: reference },
     })
 
-    // Debit: rider_wallet (remaining amount)
-    // Credit: driver_payable (driver earnings)
     await ledgerRepository.createDoubleEntry({
       correlationId: `${correlationId}_driver`,
       debitAccount: 'rider_wallet',
@@ -131,14 +164,7 @@ export const paymentsService = {
       metadata: { paymentReference: reference, driverId: trip.driverId },
     })
 
-    // Update trip with final fare
     await ridesService.completeTrip(tripId, trip.driverId!, trip.distanceMeters!, trip.durationSeconds!)
-
-    // Create wallet transactions for rider
-    const riderWallet = await ledgerRepository.getOrCreateWallet(riderId, 'rider')
-    if (riderWallet) {
-      // This would be done in a more complete implementation
-    }
   },
 
   async handleChargeFailed(data: any) {
@@ -153,9 +179,23 @@ export const paymentsService = {
   },
 
   async handleTransferSuccess(data: any) {
-    // Payout to driver completed
+    // Paystack fires this for both outbound payouts AND inbound bank transfers
+    // Inbound bank transfers (wallet top-up) carry context in metadata
     const reference = data.reference
-    console.log(`Transfer successful: ${reference}`)
+    const metadata = data.metadata || {}
+
+    if (metadata.context === 'wallet_topup') {
+      const { ownerId, ownerType } = metadata as { ownerId: string; ownerType: 'rider' | 'driver' | 'corporate' | 'fleet_owner' }
+      if (!ownerId || !ownerType) {
+        console.error('wallet_topup transfer.success missing ownerId/ownerType', { reference })
+        return
+      }
+      await walletService.topUp(ownerId, ownerType, data.amount, reference, 'Wallet top-up via bank transfer')
+      return
+    }
+
+    // Outbound payout to driver — log confirmation
+    console.log(`Outbound transfer successful: ${reference}`)
   },
 
   async handleTransferFailed(data: any) {

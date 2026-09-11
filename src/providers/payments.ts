@@ -20,16 +20,23 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 }
 
 export type InitializeResult = { authorization_url: string; access_code: string; reference: string }
-export type VerifyResult = { status: string; amount: number; reference: string; channel: string }
+export type VerifyResult = { status: string; amount: number; reference: string; channel: string; metadata?: Record<string, unknown> }
 export type TransferResult = { transfer_code: string; status: string }
 
 export const paystack = {
-  initialize: (email: string, amountKobo: number, reference: string, metadata?: Record<string, unknown>) =>
+  initialize: (
+    email: string,
+    amountKobo: number,
+    reference: string,
+    metadata?: Record<string, unknown>,
+    channels?: string[],
+  ) =>
     call<InitializeResult>('POST', '/transaction/initialize', {
       email,
       amount: amountKobo,
       reference,
       metadata,
+      channels: channels ?? ['card', 'bank_transfer', 'ussd', 'mobile_money'],
     }),
 
   verify: (reference: string) =>
