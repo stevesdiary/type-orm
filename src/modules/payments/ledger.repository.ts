@@ -105,26 +105,21 @@ export const ledgerRepository = {
   },
 
   async getWalletBalance(ownerId: string, ownerType: 'rider' | 'driver' | 'corporate' | 'fleet_owner') {
-    const wallet = await this.getOrCreateWallet(ownerId, ownerType)
-    if (!wallet) return { balanceKobo: 0, currency: 'NGN' }
+    await this.getOrCreateWallet(ownerId, ownerType)
+    const account = this.getLedgerAccountForWallet(ownerType)
 
-    // Sum all credits - debits for this wallet
-    const entries = await db.query.ledgerEntries.findMany({
-      where: and(
-        eq(ledgerEntries.account, this.getLedgerAccountForWallet(ownerType)),
-        // Filter by actorId for this specific wallet owner
-      ),
-    })
+    const result = await db
+      .select({
+        credits: sql<number>`COALESCE(SUM(CASE WHEN type = 'credit' THEN amount_kobo ELSE 0 END), 0)`,
+        debits: sql<number>`COALESCE(SUM(CASE WHEN type = 'debit' THEN amount_kobo ELSE 0 END), 0)`,
+      })
+      .from(ledgerEntries)
+      .where(and(eq(ledgerEntries.account, account), eq(ledgerEntries.actorId, ownerId)))
 
-    let balance = 0
-    for (const entry of entries) {
-      if (entry.actorId === ownerId) {
-        if (entry.type === 'credit') balance += entry.amountKobo
-        else balance -= entry.amountKobo
-      }
-    }
-
-    return { balanceKobo: balance, currency: 'NGN' }
+    const row = result[0]
+    const credits = Number(row?.credits ?? 0)
+    const debits = Number(row?.debits ?? 0)
+    return { balanceKobo: credits - debits, currency: 'NGN' }
   },
 
   async getWalletTransactions(walletId: string, limit = 50, offset = 0) {
