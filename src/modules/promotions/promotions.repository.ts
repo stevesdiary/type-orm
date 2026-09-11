@@ -1,10 +1,17 @@
 import { db } from '../../db/index.js'
-import { promotions, promoRedemptions, referrals, type Promotion, type PromoRedemption, type Referral } from '../../db/schema/promotions.js'
+import { promotions, promoRedemptions, referrals } from '../../db/schema/promotions.js'
 import { eq, and, desc, gte, lte, sql, or } from 'drizzle-orm'
+
+type Promotion = typeof promotions.$inferSelect
+type PromoRedemption = typeof promoRedemptions.$inferSelect
+type Referral = typeof referrals.$inferSelect
+type NewPromotion = typeof promotions.$inferInsert
+type NewPromoRedemption = typeof promoRedemptions.$inferInsert
+type NewReferral = typeof referrals.$inferInsert
 
 export const promotionsRepository = {
   // Promotions
-  async createPromotion(data: Omit<Promotion, 'id' | 'createdAt'>) {
+  async createPromotion(data: NewPromotion) {
     const [promo] = await db.insert(promotions).values(data).returning()
     return promo
   },
@@ -38,7 +45,7 @@ export const promotionsRepository = {
       .offset(offset)
   },
 
-  async updatePromotion(id: string, data: Partial<Omit<Promotion, 'id' | 'createdAt'>>) {
+  async updatePromotion(id: string, data: Partial<Omit<NewPromotion, 'id' | 'createdAt'>>) {
     const [promo] = await db.update(promotions).set(data).where(eq(promotions.id, id)).returning()
     return promo
   },
@@ -48,7 +55,7 @@ export const promotionsRepository = {
   },
 
   // Redemptions
-  async createRedemption(data: Omit<PromoRedemption, 'id' | 'createdAt'>) {
+  async createRedemption(data: NewPromoRedemption) {
     const [redemption] = await db.insert(promoRedemptions).values(data).returning()
     // Increment redemption count on promotion
     await db
@@ -82,7 +89,7 @@ export const promotionsRepository = {
   },
 
   // Referrals
-  async createReferral(data: Omit<Referral, 'id' | 'createdAt'>) {
+  async createReferral(data: NewReferral) {
     const [referral] = await db.insert(referrals).values(data).returning()
     return referral
   },

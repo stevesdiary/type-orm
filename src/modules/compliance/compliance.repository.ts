@@ -1,10 +1,15 @@
 import { db } from '../../db/index.js'
-import { complianceItems, complianceEvents, type ComplianceItem, type ComplianceEvent } from '../../db/schema/compliance.js'
+import { complianceItems, complianceEvents } from '../../db/schema/compliance.js'
 import { eq, and, desc, gte, lte, sql } from 'drizzle-orm'
+
+type ComplianceItem = typeof complianceItems.$inferSelect
+type ComplianceEvent = typeof complianceEvents.$inferSelect
+type NewComplianceItem = typeof complianceItems.$inferInsert
+type NewComplianceEvent = typeof complianceEvents.$inferInsert
 
 export const complianceRepository = {
   // Compliance Items
-  async createItem(data: Omit<ComplianceItem, 'id' | 'createdAt' | 'updatedAt'>) {
+  async createItem(data: Omit<NewComplianceItem, 'id' | 'createdAt' | 'updatedAt'>) {
     const [item] = await db.insert(complianceItems).values(data).returning()
     return item
   },
@@ -37,7 +42,7 @@ export const complianceRepository = {
       .offset(offset)
   },
 
-  async updateItem(id: string, data: Partial<Omit<ComplianceItem, 'id' | 'createdAt' | 'updatedAt'>>) {
+  async updateItem(id: string, data: Partial<Omit<NewComplianceItem, 'id' | 'createdAt' | 'updatedAt'>>) {
     const [item] = await db.update(complianceItems).set({ ...data, updatedAt: new Date() }).where(eq(complianceItems.id, id)).returning()
     return item
   },
@@ -47,7 +52,7 @@ export const complianceRepository = {
   },
 
   // Compliance Events
-  async createEvent(data: Omit<ComplianceEvent, 'id' | 'createdAt'>) {
+  async createEvent(data: NewComplianceEvent) {
     const [event] = await db.insert(complianceEvents).values(data).returning()
     return event
   },

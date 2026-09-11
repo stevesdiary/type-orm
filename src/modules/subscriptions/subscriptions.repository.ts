@@ -1,10 +1,15 @@
 import { db } from '../../db/index.js'
-import { driverPlans, driverSubscriptions, type DriverPlan, type DriverSubscription } from '../../db/schema/subscriptions.js'
+import { driverPlans, driverSubscriptions } from '../../db/schema/subscriptions.js'
 import { eq, and, desc, sql } from 'drizzle-orm'
+
+type DriverPlan = typeof driverPlans.$inferSelect
+type DriverSubscription = typeof driverSubscriptions.$inferSelect
+type NewDriverPlan = typeof driverPlans.$inferInsert
+type NewDriverSubscription = typeof driverSubscriptions.$inferInsert
 
 export const subscriptionsRepository = {
   // Plans
-  async createPlan(data: Omit<DriverPlan, 'id' | 'createdAt'>) {
+  async createPlan(data: Omit<NewDriverPlan, 'id' | 'createdAt'>) {
     const [plan] = await db.insert(driverPlans).values(data).returning()
     return plan
   },
@@ -19,7 +24,7 @@ export const subscriptionsRepository = {
     return db.select().from(driverPlans).where(conditions.length ? and(...conditions) : undefined).orderBy(desc(driverPlans.createdAt))
   },
 
-  async updatePlan(id: string, data: Partial<Omit<DriverPlan, 'id' | 'createdAt'>>) {
+  async updatePlan(id: string, data: Partial<Omit<NewDriverPlan, 'id' | 'createdAt'>>) {
     const [plan] = await db.update(driverPlans).set({ ...data, updatedAt: new Date() }).where(eq(driverPlans.id, id)).returning()
     return plan
   },
@@ -29,7 +34,7 @@ export const subscriptionsRepository = {
   },
 
   // Subscriptions
-  async createSubscription(data: Omit<DriverSubscription, 'id' | 'createdAt' | 'updatedAt'>) {
+  async createSubscription(data: Omit<NewDriverSubscription, 'id' | 'createdAt' | 'updatedAt'>) {
     const [sub] = await db.insert(driverSubscriptions).values(data).returning()
     return sub
   },
@@ -61,7 +66,7 @@ export const subscriptionsRepository = {
       .orderBy(desc(driverSubscriptions.createdAt))
   },
 
-  async updateSubscription(id: string, data: Partial<Omit<DriverSubscription, 'id' | 'createdAt' | 'updatedAt'>>) {
+  async updateSubscription(id: string, data: Partial<Omit<NewDriverSubscription, 'id' | 'createdAt' | 'updatedAt'>>) {
     const [sub] = await db
       .update(driverSubscriptions)
       .set({ ...data, updatedAt: new Date() })

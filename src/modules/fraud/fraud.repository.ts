@@ -1,10 +1,15 @@
 import { db } from '../../db/index.js'
-import { fraudSignals, fraudReviews, type FraudSignal, type FraudReview } from '../../db/schema/fraud.js'
+import { fraudSignals, fraudReviews } from '../../db/schema/fraud.js'
 import { eq, and, desc, sql } from 'drizzle-orm'
+
+type FraudSignal = typeof fraudSignals.$inferSelect
+type FraudReview = typeof fraudReviews.$inferSelect
+type NewFraudSignal = typeof fraudSignals.$inferInsert
+type NewFraudReview = typeof fraudReviews.$inferInsert
 
 export const fraudRepository = {
   // Fraud Signals
-  async createSignal(data: Omit<FraudSignal, 'id' | 'createdAt'>) {
+  async createSignal(data: NewFraudSignal) {
     const [signal] = await db.insert(fraudSignals).values(data).returning()
     return signal
   },
@@ -37,13 +42,13 @@ export const fraudRepository = {
       .offset(offset)
   },
 
-  async updateSignal(id: string, data: Partial<Omit<FraudSignal, 'id' | 'createdAt'>>) {
+  async updateSignal(id: string, data: Partial<Omit<NewFraudSignal, 'id' | 'createdAt'>>) {
     const [signal] = await db.update(fraudSignals).set(data).where(eq(fraudSignals.id, id)).returning()
     return signal
   },
 
   // Fraud Reviews
-  async createReview(data: Omit<FraudReview, 'id' | 'createdAt' | 'updatedAt'>) {
+  async createReview(data: NewFraudReview) {
     const [review] = await db.insert(fraudReviews).values(data).returning()
     return review
   },
@@ -64,7 +69,7 @@ export const fraudRepository = {
       .offset(offset)
   },
 
-  async updateReview(id: string, data: Partial<Omit<FraudReview, 'id' | 'createdAt' | 'updatedAt'>>) {
+  async updateReview(id: string, data: Partial<Omit<NewFraudReview, 'id' | 'createdAt' | 'updatedAt'>>) {
     const [review] = await db
       .update(fraudReviews)
       .set({ ...data, updatedAt: new Date() })
