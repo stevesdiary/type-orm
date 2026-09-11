@@ -17,6 +17,17 @@ import { paymentRoutes } from './modules/payments/payments.routes.js'
 import { adminRoutes } from './modules/admin/admin.routes.js'
 import { internalRoutes } from './modules/internal/internal.routes.js'
 import { tripWsRoutes } from './websocket/trip.ws.js'
+import { safetyRoutes } from './modules/safety/safety.routes.js'
+import { notificationRoutes } from './modules/notifications/notifications.routes.js'
+import { supportRoutes } from './modules/support/support.routes.js'
+import { logisticsRoutes } from './modules/logistics/logistics.routes.js'
+import { corporateRoutes } from './modules/corporate/corporate.routes.js'
+import { fleetRoutes } from './modules/fleet/fleet.routes.js'
+import { subscriptionsRoutes } from './modules/subscriptions/subscriptions.routes.js'
+import { promotionsRoutes } from './modules/promotions/promotions.routes.js'
+import { fraudRoutes } from './modules/fraud/fraud.routes.js'
+import { complianceRoutes } from './modules/compliance/compliance.routes.js'
+import { analyticsRoutes } from './modules/analytics/analytics.routes.js'
 
 export async function buildApp() {
   const app = Fastify({
@@ -58,6 +69,10 @@ export async function buildApp() {
   await app.register(adminRoutes, { prefix: '/admin' })
   await app.register(internalRoutes, { prefix: '/internal' })
   await app.register(tripWsRoutes)
+  await app.register(safetyRoutes, { prefix: '/safety' })
+  await app.register(notificationRoutes, { prefix: '/notifications' })
+  await app.register(supportRoutes, { prefix: '/support' })
+  await app.register(logisticsRoutes, { prefix: '/logistics' })
 
   return app
 }
