@@ -1,9 +1,9 @@
 import { ridesRepository } from './rides.repository.js'
 import { pricingService } from '../pricing/pricing.service.js'
+import { dispatchService } from '../dispatch/dispatch.service.js'
 import { maps } from '../../providers/maps.js'
 import { errors } from '../../lib/errors.js'
 
-const MAX_DISPATCH_ATTEMPTS = 3
 const CANCELLATION_FEE_KOBO = 5000 // ₦50
 
 export interface CreateTripParams {
@@ -58,58 +58,14 @@ export const ridesService = {
 
     // If immediate, start dispatch
     if (trip && (!params.scheduledFor || params.mode === 'immediate')) {
-      await this.dispatchTrip(trip.id)
+      await dispatchService.dispatch(trip.id)
     }
 
     return trip
   },
 
   async dispatchTrip(tripId: string) {
-    const trip = await ridesRepository.findById(tripId)
-    if (!trip) throw errors.notFound('Trip not found')
-    if (trip.status !== 'requested') throw errors.unprocessable('Trip cannot be dispatched')
-
-    const attemptNumber = await ridesRepository.getDispatchAttemptCount(tripId) + 1
-    if (attemptNumber > MAX_DISPATCH_ATTEMPTS) {
-      await ridesRepository.updateStatus(tripId, 'cancelled', 'system', 'system', { reason: 'No drivers available' })
-      await ridesRepository.recordDispatchAttempt({ tripId, attemptNumber, driversContacted: 0, outcome: 'exhausted' })
-      return { status: 'cancelled', reason: 'No drivers available after max attempts' }
-    }
-
-    // Find nearby drivers
-    const nearbyDrivers = await ridesRepository.findNearbyDrivers(trip.pickupLat, trip.pickupLng, 5, 10)
-
-    if (nearbyDrivers.length === 0) {
-      await ridesRepository.recordDispatchAttempt({ tripId, attemptNumber, driversContacted: 0, outcome: 'exhausted' })
-      // Retry after a delay (in production, use a queue with delay)
-      setTimeout(() => this.dispatchTrip(tripId), 5000)
-      return { status: 'retrying', attempt: attemptNumber }
-    }
-
-    // Create offers for top drivers
-    const offers = []
-    for (const driver of nearbyDrivers.slice(0, 3)) {
-      const offer = await ridesRepository.createOffer({
-        tripId,
-        driverId: driver.id,
-        estimatedPickupSeconds: Math.round((driver.distanceMeters / 1000) / 30 * 3600), // rough estimate
-        driverLat: driver.currentLat!,
-        driverLng: driver.currentLng!,
-      })
-      if (offer) offers.push(offer)
-    }
-
-    await ridesRepository.recordDispatchAttempt({
-      tripId,
-      attemptNumber,
-      driversContacted: offers.length,
-      outcome: 'pending',
-    })
-
-    // Update trip status to matched (will be confirmed when driver accepts)
-    await ridesRepository.updateStatus(tripId, 'matched', 'system', 'system', { offers: offers.map(o => o!.id) })
-
-    return { status: 'matched', offers }
+    return dispatchService.dispatch(tripId)
   },
 
   async acceptOffer(offerId: string, driverId: string) {
@@ -140,8 +96,7 @@ export const ridesService = {
     // Check if all offers are exhausted
     const pendingOffers = await ridesRepository.getPendingOffersForTrip(trip.id)
     if (pendingOffers.length === 0) {
-      // Re-dispatch
-      return this.dispatchTrip(trip.id)
+      return dispatchService.redispatch(trip.id)
     }
 
     return { reDispatched: false }
