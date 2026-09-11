@@ -6,6 +6,11 @@ export const initializePaymentSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 })
 
+export const walletTopupSchema = z.object({
+  amountKobo: z.number().int().min(10000, 'Minimum top-up is ₦100'),
+  email: z.string().email(),
+})
+
 export const webhookSchema = z.object({
   event: z.string(),
   data: z.record(z.string(), z.unknown()),
@@ -23,6 +28,7 @@ export const driverPayoutSchema = z.object({
 })
 
 export type InitializePaymentBody = z.infer<typeof initializePaymentSchema>
+export type WalletTopupBody = z.infer<typeof walletTopupSchema>
 export type WebhookBody = z.infer<typeof webhookSchema>
 export type RefundBody = z.infer<typeof refundSchema>
 export type DriverPayoutBody = z.infer<typeof driverPayoutSchema>
