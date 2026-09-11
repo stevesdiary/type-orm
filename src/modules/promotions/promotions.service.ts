@@ -1,6 +1,5 @@
 import { promotionsRepository } from './promotions.repository.js'
 import { errors } from '../../lib/errors.js'
-import { z } from 'zod'
 
 export const promotionsService = {
   // Rider/Driver: list available promotions
@@ -117,7 +116,23 @@ export const promotionsService = {
       throw errors.badRequest('valueKobo required for this promotion type')
     }
 
-    return promotionsRepository.createPromotion(data)
+    return promotionsRepository.createPromotion({
+      code: data.code,
+      type: data.type,
+      target: data.target,
+      valueKobo: data.valueKobo,
+      valuePercent: data.valuePercent,
+      maxDiscountKobo: data.maxDiscountKobo,
+      budgetKobo: data.budgetKobo,
+      maxRedemptions: data.maxRedemptions,
+      maxPerUser: data.maxPerUser ?? 1,
+      isActive: true,
+      startsAt: data.startsAt,
+      endsAt: data.endsAt,
+      createdBy: data.createdBy,
+      spentKobo: 0,
+      redemptionCount: 0,
+    })
   },
 
   // Admin: list all promotions
