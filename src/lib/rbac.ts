@@ -17,6 +17,15 @@ export function authenticate(req: FastifyRequest, _reply: FastifyReply, done: ()
   done()
 }
 
+/** Like `authenticate`, but a missing header leaves `req.user` unset instead of failing. */
+export function optionalAuthenticate(req: FastifyRequest, _reply: FastifyReply, done: () => void) {
+  const header = req.headers.authorization
+  if (header?.startsWith('Bearer ')) {
+    req.user = verifyAccessToken(header.slice(7))
+  }
+  done()
+}
+
 export function authorize(...roles: UserRole[]) {
   return (req: FastifyRequest, _reply: FastifyReply, done: () => void) => {
     if (!req.user) throw errors.unauthorized()
