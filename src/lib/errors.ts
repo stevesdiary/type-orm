@@ -17,6 +17,7 @@ export const errors = {
   notFound: (msg = 'Not found') => new AppError(404, 'NOT_FOUND', msg),
   conflict: (msg = 'Conflict') => new AppError(409, 'CONFLICT', msg),
   unprocessable: (msg: string) => new AppError(422, 'UNPROCESSABLE', msg),
+  badRequest: (msg: string) => new AppError(400, 'BAD_REQUEST', msg),
   internal: (msg = 'Internal server error') => new AppError(500, 'INTERNAL', msg),
 }
 
