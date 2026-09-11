@@ -3,15 +3,8 @@ import { errors } from '../../lib/errors.js'
 
 export const walletService = {
   async getBalance(ownerId: string, ownerType: 'rider' | 'driver' | 'corporate' | 'fleet_owner') {
-    const wallet = await ledgerRepository.getOrCreateWallet(ownerId, ownerType)
-    if (!wallet) return { balanceKobo: 0, currency: 'NGN' }
-
-    const account = ledgerRepository.getLedgerAccountForWallet(ownerType)
-    const entries = await ledgerRepository.getEntriesForReference(ownerId, 'wallet') // This needs fixing
-
-    // Better approach: query ledger entries by account and actorId
-    // For now return 0 - full implementation needs a proper query
-    return { balanceKobo: 0, currency: 'NGN' }
+    const result = await ledgerRepository.getWalletBalance(ownerId, ownerType)
+    return result
   },
 
   async getWalletTransactions(ownerId: string, ownerType: 'rider' | 'driver' | 'corporate' | 'fleet_owner', limit = 50, offset = 0) {
@@ -27,9 +20,7 @@ export const walletService = {
 
     const correlationId = `topup_${ownerId}_${Date.now()}`
 
-    // Credit: wallet account
-    // Debit: platform_liability (or external payment account)
-    await ledgerRepository.createDoubleEntry({
+    const { credit } = await ledgerRepository.createDoubleEntry({
       correlationId,
       debitAccount: 'platform_liability',
       creditAccount: ledgerRepository.getLedgerAccountForWallet(ownerType),
@@ -42,26 +33,33 @@ export const walletService = {
       metadata: { reference },
     })
 
-    // Create wallet transaction record
-    // In a full implementation, this would be done in a transaction
-    return { success: true }
+    if (credit) {
+      await ledgerRepository.createWalletTransaction({
+        walletId: wallet.id,
+        ledgerEntryId: credit.id,
+        type: 'credit',
+        amountKobo,
+        description,
+        referenceId: ownerId,
+        referenceType: 'topup',
+      })
+    }
+
+    return { success: true, balanceKobo: (await ledgerRepository.getWalletBalance(ownerId, ownerType)).balanceKobo }
   },
 
   async withdraw(ownerId: string, ownerType: 'rider' | 'driver' | 'corporate' | 'fleet_owner', amountKobo: number, reference: string, description: string) {
     const wallet = await ledgerRepository.getOrCreateWallet(ownerId, ownerType)
     if (!wallet) throw errors.notFound('Wallet not found')
 
-    // Check balance first (simplified)
-    const balance = await this.getBalance(ownerId, ownerType)
+    const balance = await ledgerRepository.getWalletBalance(ownerId, ownerType)
     if (balance.balanceKobo < amountKobo) {
       throw errors.unprocessable('Insufficient balance')
     }
 
     const correlationId = `withdrawal_${ownerId}_${Date.now()}`
 
-    // Debit: wallet account
-    // Credit: platform_liability (or external payout account)
-    await ledgerRepository.createDoubleEntry({
+    const { debit } = await ledgerRepository.createDoubleEntry({
       correlationId,
       debitAccount: ledgerRepository.getLedgerAccountForWallet(ownerType),
       creditAccount: 'platform_liability',
@@ -74,6 +72,18 @@ export const walletService = {
       metadata: { reference },
     })
 
-    return { success: true }
+    if (debit) {
+      await ledgerRepository.createWalletTransaction({
+        walletId: wallet.id,
+        ledgerEntryId: debit.id,
+        type: 'debit',
+        amountKobo,
+        description,
+        referenceId: ownerId,
+        referenceType: 'withdrawal',
+      })
+    }
+
+    return { success: true, balanceKobo: (await ledgerRepository.getWalletBalance(ownerId, ownerType)).balanceKobo }
   },
 }
