@@ -109,9 +109,9 @@ export async function supportRoutes(app: FastifyInstance) {
     },
   )
 
-  // Agent: add internal message
+  // Agent: add (optionally internal) message
   app.post<{ Body: AddMessageBody; Params: { caseId: string } }>(
-    '/:caseId/messages',
+    '/admin/:caseId/messages',
     { preHandler: [authenticate, authorize('admin')] },
     async (req) => {
       const { caseId } = req.params
@@ -126,7 +126,7 @@ export async function supportRoutes(app: FastifyInstance) {
   )
 
   // Agent: get case messages (including internal)
-  app.get('/:caseId/messages', { preHandler: [authenticate, authorize('admin')] }, async (req) => {
+  app.get('/admin/:caseId/messages', { preHandler: [authenticate, authorize('admin')] }, async (req) => {
     const { caseId } = req.params as { caseId: string }
     return supportService.getMessages(caseId, undefined, 'agent', true)
   })
