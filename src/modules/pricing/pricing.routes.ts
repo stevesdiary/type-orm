@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { authenticate, authorize } from '../../lib/rbac.js'
+import { authenticate, authorize, optionalAuthenticate } from '../../lib/rbac.js'
 import {
   quoteRequestSchema,
   createConfigSchema,
@@ -11,18 +11,11 @@ import {
 import { pricingService } from './pricing.service.js'
 
 export async function pricingRoutes(app: FastifyInstance) {
-  // Public fare quote (rider can call before auth)
-  app.post<{ Body: QuoteRequestBody }>('/quote', async (req) => {
+  // Fare quote — works anonymously (pre-auth) and binds to the rider when a token is sent
+  app.post<{ Body: QuoteRequestBody }>('/quote', { preHandler: optionalAuthenticate }, async (req) => {
     const body = quoteRequestSchema.parse(req.body)
-    // Use a default riderId for anonymous quotes, or get from auth if available
     const riderId = req.user?.sub ?? 'anonymous'
     return pricingService.getQuote({ ...body, riderId })
-  })
-
-  // Authenticated rider quote (uses actual rider ID)
-  app.post<{ Body: QuoteRequestBody }>('/quote', { preHandler: [authenticate, authorize('rider')] }, async (req) => {
-    const body = quoteRequestSchema.parse(req.body)
-    return pricingService.getQuote({ ...body, riderId: req.user.sub })
   })
 
   // Admin: manage pricing configs
