@@ -1,18 +1,20 @@
 import { db } from '../../db/index.js'
-import { rides, drivers, riders, driverSubscriptions, driverPlans, payments, deliveryJobs, fraudSignals, complianceItems } from '../../db/schema/index.js'
-import { eq, and, desc, gte, lte, sql, count, sum, avg } from 'drizzle-orm'
+import { trips, drivers, riders, driverSubscriptions, driverPlans, paymentIntents, deliveryJobs, fraudSignals, complianceItems } from '../../db/schema/index.js'
+import { eq, and, desc, gte, lte, sql, sum, avg } from 'drizzle-orm'
 
 export const analyticsRepository = {
   // Marketplace analytics
   async getMarketplaceStats({ startDate, endDate }: { startDate?: Date; endDate?: Date } = {}) {
     const conditions = []
-    if (startDate) conditions.push(gte(rides.createdAt, startDate))
-    if (endDate) conditions.push(lte(rides.createdAt, endDate))
+    if (startDate) conditions.push(gte(trips.createdAt, startDate))
+    if (endDate) conditions.push(lte(trips.createdAt, endDate))
 
-    const [totalTrips] = await db.select({ count: sql<number>`count(*)` }).from(rides).where(conditions.length ? and(...conditions) : undefined)
-    const [activeDrivers] = await db.select({ count: sql<number>`count(*)` }).from(drivers).where(eq(drivers.status, 'active'))
-    const [activeRiders] = await db.select({ count: sql<number>`count(*)` }).from(riders).where(eq(riders.status, 'active'))
-    const [revenue] = await db.select({ total: sql<number>`coalesce(sum(${payments.amountKobo}), 0)` }).from(payments).where(and(eq(payments.status, 'completed'), ...conditions))
+    const [totalTrips] = await db.select({ count: sql<number>`count(*)` }).from(trips).where(conditions.length ? and(...conditions) : undefined)
+    const [activeDrivers] = await db.select({ count: sql<number>`count(*)` }).from(drivers).where(eq(drivers.status, 'approved'))
+    const [activeRiders] = await db.select({ count: sql<number>`count(*)` }).from(riders)
+    const [revenue] = await db.select({ total: sql<number>`coalesce(sum(${paymentIntents.amountKobo}), 0)` })
+      .from(paymentIntents)
+      .where(and(eq(paymentIntents.status, 'captured'), ...conditions))
 
     return {
       totalTrips: totalTrips?.count ?? 0,
@@ -24,58 +26,52 @@ export const analyticsRepository = {
 
   async getTripsByPeriod({ startDate, endDate, interval = 'day' }: { startDate?: Date; endDate?: Date; interval?: 'hour' | 'day' | 'week' | 'month' } = {}) {
     const conditions = []
-    if (startDate) conditions.push(gte(rides.createdAt, startDate))
-    if (endDate) conditions.push(lte(rides.createdAt, endDate))
-
-    let groupBy: string
-    if (interval === 'hour') groupBy = sql`date_trunc('hour', ${rides.createdAt})`.toString()
-    else if (interval === 'day') groupBy = sql`date_trunc('day', ${rides.createdAt})`.toString()
-    else if (interval === 'week') groupBy = sql`date_trunc('week', ${rides.createdAt})`.toString()
-    else groupBy = sql`date_trunc('month', ${rides.createdAt})`.toString()
+    if (startDate) conditions.push(gte(trips.createdAt, startDate))
+    if (endDate) conditions.push(lte(trips.createdAt, endDate))
 
     return db
       .select({
-        period: sql<Date>`date_trunc(${interval}, ${rides.createdAt})`,
+        period: sql<Date>`date_trunc(${interval}, ${trips.createdAt})`,
         count: sql<number>`count(*)`,
       })
-      .from(rides)
+      .from(trips)
       .where(conditions.length ? and(...conditions) : undefined)
-      .groupBy(sql`date_trunc(${interval}, ${rides.createdAt})`)
-      .orderBy(sql`date_trunc(${interval}, ${rides.createdAt})`)
+      .groupBy(sql`date_trunc(${interval}, ${trips.createdAt})`)
+      .orderBy(sql`date_trunc(${interval}, ${trips.createdAt})`)
   },
 
   async getRevenueByPeriod({ startDate, endDate, interval = 'day' }: { startDate?: Date; endDate?: Date; interval?: 'day' | 'week' | 'month' } = {}) {
-    const conditions = [eq(payments.status, 'completed')]
-    if (startDate) conditions.push(gte(payments.createdAt, startDate))
-    if (endDate) conditions.push(lte(payments.createdAt, endDate))
+    const conditions = [eq(paymentIntents.status, 'captured')]
+    if (startDate) conditions.push(gte(paymentIntents.createdAt, startDate))
+    if (endDate) conditions.push(lte(paymentIntents.createdAt, endDate))
 
     return db
       .select({
-        period: sql<Date>`date_trunc(${interval}, ${payments.createdAt})`,
-        revenue: sql<number>`sum(${payments.amountKobo})`,
+        period: sql<Date>`date_trunc(${interval}, ${paymentIntents.createdAt})`,
+        revenue: sql<number>`sum(${paymentIntents.amountKobo})`,
       })
-      .from(payments)
+      .from(paymentIntents)
       .where(and(...conditions))
-      .groupBy(sql`date_trunc(${interval}, ${payments.createdAt})`)
-      .orderBy(sql`date_trunc(${interval}, ${payments.createdAt})`)
+      .groupBy(sql`date_trunc(${interval}, ${paymentIntents.createdAt})`)
+      .orderBy(sql`date_trunc(${interval}, ${paymentIntents.createdAt})`)
   },
 
   // Driver analytics
   async getDriverAnalytics(driverId: string, { startDate, endDate }: { startDate?: Date; endDate?: Date } = {}) {
-    const conditions = [eq(rides.driverId, driverId)]
-    if (startDate) conditions.push(gte(rides.createdAt, startDate))
-    if (endDate) conditions.push(lte(rides.createdAt, endDate))
+    const conditions = [eq(trips.driverId, driverId)]
+    if (startDate) conditions.push(gte(trips.createdAt, startDate))
+    if (endDate) conditions.push(lte(trips.createdAt, endDate))
 
-    const [trips] = await db.select({ count: sql<number>`count(*)` }).from(rides).where(and(...conditions))
-    const [earnings] = await db.select({ total: sql<number>`coalesce(sum(${payments.amountKobo}), 0)` })
-      .from(payments)
-      .where(and(eq(payments.driverId, driverId), eq(payments.status, 'completed'), ...conditions))
+    const [tripCount] = await db.select({ count: sql<number>`count(*)` }).from(trips).where(and(...conditions))
+    const [earnings] = await db.select({ total: sql<number>`coalesce(sum(${paymentIntents.amountKobo}), 0)` })
+      .from(paymentIntents)
+      .where(and(eq(paymentIntents.referenceId, driverId), eq(paymentIntents.status, 'captured'), ...conditions))
     const [rating] = await db.select({ avg: sql<number>`avg(${drivers.rating})` }).from(drivers).where(eq(drivers.id, driverId))
-    const [completed] = await db.select({ count: sql<number>`count(*)` }).from(rides).where(and(eq(rides.driverId, driverId), eq(rides.status, 'completed'), ...conditions))
-    const [cancelled] = await db.select({ count: sql<number>`count(*)` }).from(rides).where(and(eq(rides.driverId, driverId), eq(rides.status, 'cancelled'), ...conditions))
+    const [completed] = await db.select({ count: sql<number>`count(*)` }).from(trips).where(and(eq(trips.driverId, driverId), eq(trips.status, 'completed'), ...conditions))
+    const [cancelled] = await db.select({ count: sql<number>`count(*)` }).from(trips).where(and(eq(trips.driverId, driverId), eq(trips.status, 'cancelled'), ...conditions))
 
     return {
-      totalTrips: trips?.count ?? 0,
+      totalTrips: tripCount?.count ?? 0,
       completedTrips: completed?.count ?? 0,
       cancelledTrips: cancelled?.count ?? 0,
       earningsKobo: earnings?.total ?? 0,
@@ -84,36 +80,36 @@ export const analyticsRepository = {
   },
 
   async getDriverEarningsHistory(driverId: string, { startDate, endDate }: { startDate?: Date; endDate?: Date } = {}) {
-    const conditions = [eq(payments.driverId, driverId), eq(payments.status, 'completed')]
-    if (startDate) conditions.push(gte(payments.createdAt, startDate))
-    if (endDate) conditions.push(lte(payments.createdAt, endDate))
+    const conditions = [eq(paymentIntents.referenceId, driverId), eq(paymentIntents.status, 'captured')]
+    if (startDate) conditions.push(gte(paymentIntents.createdAt, startDate))
+    if (endDate) conditions.push(lte(paymentIntents.createdAt, endDate))
 
     return db
       .select({
-        period: sql<Date>`date_trunc('day', ${payments.createdAt})`,
-        earnings: sql<number>`sum(${payments.amountKobo})`,
+        period: sql<Date>`date_trunc('day', ${paymentIntents.createdAt})`,
+        earnings: sql<number>`sum(${paymentIntents.amountKobo})`,
         trips: sql<number>`count(*)`,
       })
-      .from(payments)
+      .from(paymentIntents)
       .where(and(...conditions))
-      .groupBy(sql`date_trunc('day', ${payments.createdAt})`)
-      .orderBy(sql`date_trunc('day', ${payments.createdAt})`)
+      .groupBy(sql`date_trunc('day', ${paymentIntents.createdAt})`)
+      .orderBy(sql`date_trunc('day', ${paymentIntents.createdAt})`)
   },
 
   // Rider analytics
   async getRiderAnalytics(riderId: string, { startDate, endDate }: { startDate?: Date; endDate?: Date } = {}) {
-    const conditions = [eq(rides.riderId, riderId)]
-    if (startDate) conditions.push(gte(rides.createdAt, startDate))
-    if (endDate) conditions.push(lte(rides.createdAt, endDate))
+    const conditions = [eq(trips.riderId, riderId)]
+    if (startDate) conditions.push(gte(trips.createdAt, startDate))
+    if (endDate) conditions.push(lte(trips.createdAt, endDate))
 
-    const [trips] = await db.select({ count: sql<number>`count(*)` }).from(rides).where(and(...conditions))
-    const [spending] = await db.select({ total: sql<number>`coalesce(sum(${payments.amountKobo}), 0)` })
-      .from(payments)
-      .where(and(eq(payments.riderId, riderId), eq(payments.status, 'completed'), ...conditions))
-    const [avgFare] = await db.select({ avg: sql<number>`avg(${rides.fareKobo})` }).from(rides).where(and(...conditions))
+    const [tripCount] = await db.select({ count: sql<number>`count(*)` }).from(trips).where(and(...conditions))
+    const [spending] = await db.select({ total: sql<number>`coalesce(sum(${paymentIntents.amountKobo}), 0)` })
+      .from(paymentIntents)
+      .where(and(eq(paymentIntents.ownerId, riderId), eq(paymentIntents.status, 'captured'), ...conditions))
+    const [avgFare] = await db.select({ avg: sql<number>`avg(${trips.finalFareKobo})` }).from(trips).where(and(...conditions))
 
     return {
-      totalTrips: trips?.count ?? 0,
+      totalTrips: tripCount?.count ?? 0,
       spendingKobo: spending?.total ?? 0,
       avgFareKobo: avgFare?.avg ?? 0,
     }
