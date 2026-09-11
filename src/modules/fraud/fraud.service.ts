@@ -8,7 +8,7 @@ export const fraudService = {
       entityId: data.entityId,
       entityType: data.entityType,
       signalType: data.signalType as any,
-      confidence: 0.5, // User reports start with medium confidence
+      confidence: 0.5,
       metadata: JSON.stringify({ reportedBy: reporterId, description: data.description }),
       requiresReview: true,
     })
