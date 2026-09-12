@@ -18,7 +18,12 @@ const schema = z.object({
   QSTASH_CURRENT_SIGNING_KEY: z.string().min(1),
   QSTASH_NEXT_SIGNING_KEY: z.string().min(1),
 
-  MAPBOX_ACCESS_TOKEN: z.string().min(1),
+  // Map providers (at least one routing + one geocoding required)
+  MAPBOX_ACCESS_TOKEN: z.string().optional(),
+  MAPTILER_TOKEN: z.string().optional(),
+  STADIA_MAPS_TOKEN: z.string().optional(),
+  OPENROUTESERVICE_TOKEN: z.string().optional(),
+  GRAPHHOPPER_TOKEN: z.string().optional(),
 
   PAYSTACK_SECRET_KEY: z.string().min(1),
   PAYSTACK_WEBHOOK_SECRET: z.string().min(1),
